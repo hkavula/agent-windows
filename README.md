@@ -10,8 +10,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 - Optimized metrics collection & simplified the code
 - Added `CheckServices` which allows the agent to monitor the status of running processes and services
 - Added `CheckDriveHealth` which allows the agent to monitor drive health
+- The agent will now have a warning on the HetrixTools interface if your server needs to reboot to finish installing updates
 
 
 
-### Version 1.x (discontinued): 
+#### Version 1.x (discontinued): 
 https://github.com/hetrixtools/agent-win

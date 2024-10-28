@@ -31,6 +31,13 @@ if ($is64BitOS -and $is32BitProcess) {
     exit
 }
 
+# Check if the script is running with elevated privileges
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $isAdmin) {
+    Write-Host "Please run this script as an Administrator."
+    exit
+}
+
 # Find and uninstall v1 agent
 Write-Host "Checking for old agent..."
 $processName = "HetrixToolsAgent.exe"
