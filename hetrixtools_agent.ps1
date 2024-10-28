@@ -122,7 +122,7 @@ if (-not [string]::IsNullOrEmpty($NetworkInterfaces)) {
 } else {
     # Automatically detect the network interfaces
     $NetworkInterfacesArray = @()
-    $activeInterfaces = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.MediaType -eq '802.3' }
+    $activeInterfaces = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }
     foreach ($interface in $activeInterfaces) {
         $NetworkInterfacesArray += $interface.Name
     }
