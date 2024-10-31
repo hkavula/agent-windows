@@ -20,7 +20,7 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.0"
+$Version = "2.0.1"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
@@ -171,11 +171,8 @@ $total_cpuUsage = 0
 for ($X = 1; $X -le $RunTimes; $X++) {
 	
 	# Get the current overall CPU usage percentage
-	$cpuUsage = Get-Counter '\Processor(_Total)\% Processor Time'
+	$cpuUsage = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval $CollectEveryXSeconds
 	$total_cpuUsage += [math]::Round($cpuUsage.CounterSamples.CookedValue, 2)
-
-    # Sleep
-    Start-Sleep -Seconds "$CollectEveryXSeconds"
 	
 	# Check if the minute has changed, so we can end the loop
 	$MM = [int](Get-Date -Format 'mm')

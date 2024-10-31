@@ -4,6 +4,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.0.1: 
+
+- improved CPU sample collection
+
 #### Version 2.0.0: 
 
 - Rewritten the entire Windows Agent in PowerShell
