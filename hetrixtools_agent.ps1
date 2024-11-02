@@ -20,7 +20,7 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.1"
+$Version = "2.0.2"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
@@ -166,27 +166,49 @@ $RunTimes = [math]::Floor(60 / $CollectEveryXSeconds)
 
 # Initialise values
 $total_cpuUsage = 0
+$total_diskTime = 0
 
 # Collect data loop
 for ($X = 1; $X -le $RunTimes; $X++) {
-	
-	# Get the current overall CPU usage percentage
-	$cpuUsage = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval $CollectEveryXSeconds
-	$total_cpuUsage += [math]::Round($cpuUsage.CounterSamples.CookedValue, 2)
-	
-	# Check if the minute has changed, so we can end the loop
-	$MM = [int](Get-Date -Format 'mm')
+    # Start both commands as jobs
+    $cpuJob = Start-Job -ScriptBlock { 
+        $cpuCounter = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval $using:CollectEveryXSeconds
+        return $cpuCounter.CounterSamples.CookedValue
+    }
 
-	# If minute is empty or zero, set it to 0
-	if (-not $MM) {
-		$MM = 0
-	}
+    $diskJob = Start-Job -ScriptBlock { 
+        $diskCounter = Get-Counter '\PhysicalDisk(_Total)\% Disk Time' -SampleInterval $using:CollectEveryXSeconds
+        return $diskCounter.CounterSamples.CookedValue
+    }
 
-	# Compare the current minute with the initial minute ($M)
-	if ($MM -ne $M) {
-		break
-	}
+    # Wait for both jobs to complete
+    $cpuJob | Wait-Job
+    $diskJob | Wait-Job
 
+    # Retrieve results and process them
+    $cpuUsage = Receive-Job -Job $cpuJob
+    $diskTime = Receive-Job -Job $diskJob
+
+    # Add up the results
+    $total_cpuUsage += [math]::Round($cpuUsage, 2)
+    $total_diskTime += [math]::Round($diskTime, 2)
+
+    # Clean up jobs
+    Remove-Job -Job $cpuJob
+    Remove-Job -Job $diskJob
+
+    # Check if the minute has changed, so we can end the loop
+    $MM = [int](Get-Date -Format 'mm')
+
+    # If minute is empty or zero, set it to 0
+    if (-not $MM) {
+        $MM = 0
+    }
+
+    # Compare the current minute with the initial minute ($M)
+    if ($MM -ne $M) {
+        break
+    }
 }
 
 # Get Win32_OperatingSystem
@@ -245,8 +267,7 @@ $cpuFreq += $sysInfo.CurrentClockSpeed
 $cpuUsage = [math]::Round($total_cpuUsage / $X, 2)
 
 # Get the disk I/O wait time
-$diskTime = Get-Counter '\PhysicalDisk(_Total)\% Disk Time'
-$diskWaitTime = [math]::Round($diskTime.CounterSamples.CookedValue, 2)
+$diskTime = [math]::Round($total_diskTime / $X, 2)
 
 # Get the total RAM
 $totalMemory = $Win32_OperatingSystem.TotalVisibleMemorySize * 1024
@@ -403,7 +424,7 @@ $Data = [PSCustomObject]@{
     cputhreads = $cpuThreads
     cpuspeed = $cpuFreq
     cpu = $cpuUsage
-    wa = $diskWaitTime
+    wa = $diskTime
     ramsize = $totalMemory
     ram = $usedMemory
     ramswapsize = $totalSwapSize

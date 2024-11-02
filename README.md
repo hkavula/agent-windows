@@ -4,6 +4,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.0.2: 
+
+- improved CPU and disk time sample collection
+
 #### Version 2.0.1: 
 
 - improved CPU sample collection
