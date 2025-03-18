@@ -79,37 +79,6 @@ else {
 }
 Write-Host "... done."
 
-# Find and uninstall v1 agent
-Write-Host "Checking for old agent..."
-$processName = "HetrixToolsAgent.exe"
-$processes = Get-WmiObject Win32_Process | Where-Object { $_.Name -eq $processName }
-$paths = @()
-if ($processes) {
-    foreach ($process in $processes) {
-        $processPath = $process.ExecutablePath
-        if ($processPath) {
-            Write-Host "Found process $($process.ProcessId) running from path $processPath"
-            $paths += $processPath.Trim()
-        } else {
-            Write-Host "Unable to retrieve the path for the process $($process.ProcessId)."
-        }
-    }
-    $uniquePaths = $paths | Select-Object -Unique
-    if ($uniquePaths.Count -eq 1) {
-        $finalPath = $uniquePaths
-        Write-Host "The unique path for all instances is $finalPath"
-        Write-Host "Uninstalling the old agent..."
-        & "$finalPath" stop
-        & "$finalPath" remove
-        & taskkill /IM "HetrixToolsAgent.exe" /F
-    } else {
-        Write-Host "Error: Cannot uninstall the old agent because there are multiple instances running from different paths."
-        Write-Host "Please manually uninstall the old agent and then re-run this install script again."
-        exit 1
-    }
-}
-Write-Host "... done."
-
 # Check if the folder exists
 Write-Host "Checking installation folder..."
 if (-Not (Test-Path -Path $folderPath)) {
@@ -128,13 +97,30 @@ if (-Not (Test-Path -Path $folderPath)) {
 Write-Host "... done."
 
 # Download the agent
-Write-Host "Downloading the agent..."
+$items = @(
+    [PSCustomObject] @{
+        description = "agent"
+        source = "https://raw.githubusercontent.com/hetrixtools/agent-windows/$BRANCH/hetrixtools_agent.ps1"
+        target = "$folderPath\hetrixtools_agent.ps1"
+    },
+    [PSCustomObject] @{
+        description = "config file"
+        source = "https://raw.githubusercontent.com/hetrixtools/agent-windows/$BRANCH/hetrixtools.cfg"
+        target = "$folderPath\hetrixtools.cfg"
+    }
+)
 $wc = New-Object System.Net.WebClient
-$wc.DownloadFile("https://raw.githubusercontent.com/hetrixtools/agent-windows/$BRANCH/hetrixtools_agent.ps1", "$folderPath\hetrixtools_agent.ps1")
-Write-Host "... done."
-Write-Host "Downloading the config file..."
-$wc.DownloadFile("https://raw.githubusercontent.com/hetrixtools/agent-windows/$BRANCH/hetrixtools.cfg", "$folderPath\hetrixtools.cfg")
-Write-Host "... done."
+foreach ($item in $items) {
+    Write-Host "Downloading the ${$item.description}..."
+    $wc.DownloadFile($item.source, $item.target)
+    if (Test-Path -Path $item.target) {
+        Write-Host "... done."
+    }
+    else {
+        Write-Host "... failed." -ForegroundColor Yellow
+        exit
+    }
+}
 
 # Insert the Server ID into the config file
 Write-Host "Inserting the Server ID into the config file..."
@@ -212,6 +198,46 @@ Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTri
 $task = Get-ScheduledTask -TaskName $taskName
 $task.Settings.ExecutionTimeLimit = "PT2M"
 Set-ScheduledTask -TaskName $taskName -TaskPath "\" -Settings $task.Settings
+
+# Check if agent is ready to replace v1 agent and/or to confirm installation
+$taskExecutionTimeLimit = (Get-ScheduledTask -TaskName $taskName).Settings.ExecutionTimeLimit
+if ($taskExecutionTimeLimit -eq $task.Settings.ExecutionTimeLimit) {
+    Write-Host "... done."
+}
+else {
+    Write-Host "... failed." -ForegroundColor Yellow
+    exit
+}
+
+# Find and uninstall v1 agent
+Write-Host "Checking for old agent..."
+$processName = "HetrixToolsAgent.exe"
+$processes = Get-WmiObject Win32_Process | Where-Object { $_.Name -eq $processName }
+$paths = @()
+if ($processes) {
+    foreach ($process in $processes) {
+        $processPath = $process.ExecutablePath
+        if ($processPath) {
+            Write-Host "Found process $($process.ProcessId) running from path $processPath"
+            $paths += $processPath.Trim()
+        } else {
+            Write-Host "Unable to retrieve the path for the process $($process.ProcessId)."
+        }
+    }
+    $uniquePaths = $paths | Select-Object -Unique
+    if ($uniquePaths.Count -eq 1) {
+        $finalPath = $uniquePaths
+        Write-Host "The unique path for all instances is $finalPath"
+        Write-Host "Uninstalling the old agent..."
+        & "$finalPath" stop
+        & "$finalPath" remove
+        & taskkill /IM "HetrixToolsAgent.exe" /F
+    } else {
+        Write-Host "Error: Cannot uninstall the old agent because there are multiple instances running from different paths."
+        Write-Host "Please manually uninstall the old agent and then re-run this install script again."
+        exit 1
+    }
+}
 Write-Host "... done."
 
 # Start the scheduled task
