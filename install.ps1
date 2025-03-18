@@ -45,6 +45,40 @@ if ([System.Environment]::OSVersion.Version.Build -lt 17763 -and [Net.ServicePoi
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $commonSecurityProtocols
 }
 
+# Installation folder
+$folderPath = "C:\Program Files\HetrixTools"
+
+# Get the Server ID
+$SID = $args[0]
+if ([string]::IsNullOrWhiteSpace($SID)) {
+    # Try to reuse Server ID from existing v2 agent installation
+    $existingConfig = "$folderPath\hetrixtools.cfg"
+    if (Test-Path -Path $existingConfig) {
+        foreach ($line in Get-Content $existingConfig) {
+            if ($line -match "^\s*SID\s*=\s*([a-z0-9]{32})\s*$") {
+                $SID = $Matches[1]
+                break
+            }
+        }
+    }
+    # Try to reuse Server ID from existing v1 agent installation
+    $existingSID = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\HetrixToolsAgent\Parameters"
+    if ([string]::IsNullOrWhiteSpace($SID) -and (Test-Path -Path $existingSID)) {
+        $SID = (Get-ItemProperty -Path $existingSID -Name 'sid').sid
+    }
+}
+
+# Make sure the SID is plausible
+Write-Host "Checking Server ID (SID)..."
+if ($SID -match "^[a-z0-9]{32}$") {
+    Write-Host "Server ID: $SID" -ForegroundColor Cyan
+}
+else {
+    Write-Host "Error: Server ID is empty." -ForegroundColor Yellow
+    exit
+}
+Write-Host "... done."
+
 # Find and uninstall v1 agent
 Write-Host "Checking for old agent..."
 $processName = "HetrixToolsAgent.exe"
@@ -75,20 +109,6 @@ if ($processes) {
     }
 }
 Write-Host "... done."
-
-# Get the Server ID
-$SID = $args[0]
-
-# Make sure the SID is not empty
-Write-Host "Checking Server ID (SID)..."
-if ($SID -eq "") {
-    Write-Host "Error: Server ID is empty."
-    exit
-}
-Write-Host "... done."
-
-# Installation folder
-$folderPath = "C:\Program Files\HetrixTools"
 
 # Check if the folder exists
 Write-Host "Checking installation folder..."
@@ -122,7 +142,7 @@ Write-Host "Inserting the Server ID into the config file..."
 
 # Check if any processes/services need to be monitored
 Write-Host "Checking if any processes/services need to be monitored..."
-if ($args[1] -ne "0") {
+if ($null -ne $args[1] -and $args[1] -ne "0") {
     # Insert the processes/services into the config file
     Write-Host "Inserting the processes/services into the config file..."
     # Split the string into an array and filter out empty elements
@@ -173,6 +193,7 @@ if ($existingTask) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 Write-Host "... done."
+
 Write-Host "Creating the new scheduled task..."
 # Calculate the next full minute
 $currentTime = Get-Date
