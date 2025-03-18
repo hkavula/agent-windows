@@ -38,6 +38,13 @@ if (-not $isAdmin) {
     exit
 }
 
+# Make sure older versions of PowerShell are configured to allow TLS 1.2
+# OSVersion needs to be considered to prevent downgrading stronger SystemDefault on newer versions of Windows Server
+$commonSecurityProtocols = [Net.SecurityProtocolType]::Tls12
+if ([System.Environment]::OSVersion.Version.Build -lt 17763 -and [Net.ServicePointManager]::SecurityProtocol -lt $commonSecurityProtocols) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $commonSecurityProtocols
+}
+
 # Find and uninstall v1 agent
 Write-Host "Checking for old agent..."
 $processName = "HetrixToolsAgent.exe"
