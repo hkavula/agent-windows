@@ -1,6 +1,6 @@
 #
 #	HetrixTools Server Monitoring Agent
-#	Copyright 2015 - 2024 @  HetrixTools
+#	Copyright 2015 - 2025 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -20,7 +20,7 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.2"
+$Version = "2.0.3"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
@@ -289,7 +289,11 @@ $totalSwapSize = $swapInfo.AllocatedBaseSize * 1024 * 1024
 $usedSwapSize = $swapInfo.CurrentUsage * 1024 * 1024
 
 # Calculate swap usage percentage
-$swapUsage = [math]::Round(($usedSwapSize / $totalSwapSize) * 100, 2)
+if($totalSwapSize -and $usedSwapSize -and ($totalSwapSize -is [int] -or $totalSwapSize -is [double]) -and ($usedSwapSize -is [int] -or $usedSwapSize -is [double])) {
+    $swapUsage = [math]::Round(($usedSwapSize / $totalSwapSize) * 100, 2)
+} else {
+    $swapUsage = 0
+}
 
 # Get disk information and usage details
 $disksInfo = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
@@ -373,9 +377,16 @@ foreach ($NIC in $NetworkInterfacesArray) {
 
             # Individual NIC IP addresses
             $ipv4Addresses = (Get-NetIPAddress -InterfaceAlias $NIC -AddressFamily IPv4).IPAddress -join ","
-            $ipv6Addresses = (Get-NetIPAddress -InterfaceAlias $NIC -AddressFamily IPv6 | Where-Object {
-				$_.IPAddress -notmatch '^fe80::'
-			}).IPAddress -join ","
+            if (Get-NetAdapter -Name $NIC -ErrorAction SilentlyContinue) {
+                $ipv6Addresses = (Get-NetIPAddress -InterfaceAlias $NIC -AddressFamily IPv6 -ErrorAction SilentlyContinue | Where-Object {
+                    $_.IPAddress -notmatch '^fe80::'
+                }).IPAddress -join ","
+                if (!$ipv6Addresses) {
+                    $ipv6Addresses = ""
+                }
+            } else {
+                $ipv6Addresses = ""
+            }
             $IPv4 += "$NIC,$ipv4Addresses;"
             $IPv6 += "$NIC,$ipv6Addresses;"
         }

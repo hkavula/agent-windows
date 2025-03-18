@@ -4,13 +4,18 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.0.3: 
+
+- Fixed some instances where the agent would not collect its metrics properly
+- Improved compatibility with older versions of Windows Server (thanks to @hkavula)
+
 #### Version 2.0.2: 
 
-- improved CPU and disk time sample collection
+- Improved CPU and disk time sample collection
 
 #### Version 2.0.1: 
 
-- improved CPU sample collection
+- Improved CPU sample collection
 
 #### Version 2.0.0: 
 
