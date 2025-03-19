@@ -20,7 +20,7 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.4"
+$Version = "2.0.5"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
