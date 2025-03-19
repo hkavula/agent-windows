@@ -20,10 +20,16 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.3"
+$Version = "2.0.4"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
+
+# Debug log
+$debugLog = "$ScriptPath\debug.log"
+
+# Script start time
+$ScriptStartTime = Get-Date -Format '[yyyy-MM-dd HH:mm:ss]'
 
 # Function to parse the configuration file
 function Get-ConfigValue {
@@ -93,15 +99,16 @@ $CollectEveryXSeconds = Get-ConfigValue -Key "CollectEveryXSeconds"
 $NetworkInterfaces = Get-ConfigValue -Key "NetworkInterfaces"
 $CheckServices = Get-ConfigValue -Key "CheckServices"
 $CheckDriveHealth = Get-ConfigValue -Key "CheckDriveHealth"
+$DEBUG = Get-ConfigValue -Key "DEBUG"
+
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Starting HetrixTools Agent v$Version"}
 
 # If SID is empty, exit
 if ([string]::IsNullOrEmpty($SID)) {
     Write-Host "SID is empty. Exiting..."
+    if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') SID is empty"}
     exit 1
 }
-
-# Script start time
-$ScriptStartTime = Get-Date -Format '[yyyy-MM-dd HH:mm:ss]'
 
 # Start timers
 $START = [datetime]::UtcNow
@@ -113,6 +120,14 @@ $M = [int](Get-Date -Format 'mm')
 # If minute is empty, set it to 0
 if (-not $M) {
     $M = 0
+}
+
+# Clear debug log every day at midnight
+if ((Get-Date).Hour -eq 0 -and (Get-Date).Minute -eq 0) {
+    if (Test-Path $debugLog) {
+        Remove-Item -Path $debugLog -Force
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Debug log cleared."}
+    }
 }
 
 # Network interfaces
@@ -128,6 +143,8 @@ if (-not [string]::IsNullOrEmpty($NetworkInterfaces)) {
     }
 }
 
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Interfaces: $($NetworkInterfacesArray -join ', ')"}
+
 # Initial network usage
 $networkStats = Get-NetAdapterStatistics
 $aRX = @{}
@@ -141,11 +158,15 @@ foreach ($NIC in $NetworkInterfacesArray) {
         if ($adapterStats) {
             $aRX[$NIC] = $adapterStats.ReceivedBytes
             $aTX[$NIC] = $adapterStats.SentBytes
+            if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Stats: $NIC - RX: $($aRX[$NIC]) - TX: $($aTX[$NIC])"}
         }
     } catch {
         # Ignore any errors for unavailable NICs
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Error: $NIC"}
     }
 }
+
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Stats: $($aRX -join ', ') - $($aTX -join ', ')"}
 
 # Check processes/services
 if (-not [string]::IsNullOrEmpty($CheckServices)) {
@@ -153,6 +174,7 @@ if (-not [string]::IsNullOrEmpty($CheckServices)) {
     $CheckServicesArray = $CheckServices -split ','
     foreach ($serviceName in $CheckServicesArray) {
         $serviceStatus = Check-ProcessOrService -Name $serviceName
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Service: $serviceName - Status: $serviceStatus"}
         if ($SRVCSR.ContainsKey($serviceName)) {
             $SRVCSR[$serviceName] += $serviceStatus
         } else {
@@ -164,12 +186,15 @@ if (-not [string]::IsNullOrEmpty($CheckServices)) {
 # Calculate how many data sample loops
 $RunTimes = [math]::Floor(60 / $CollectEveryXSeconds)
 
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') RunTimes: $RunTimes"}
+
 # Initialise values
 $total_cpuUsage = 0
 $total_diskTime = 0
 
 # Collect data loop
 for ($X = 1; $X -le $RunTimes; $X++) {
+    if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Start Loop: $X"}
     # Start both commands as jobs
     $cpuJob = Start-Job -ScriptBlock { 
         $cpuCounter = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval $using:CollectEveryXSeconds
@@ -189,6 +214,8 @@ for ($X = 1; $X -le $RunTimes; $X++) {
     $cpuUsage = Receive-Job -Job $cpuJob
     $diskTime = Receive-Job -Job $diskJob
 
+    if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Usage: $cpuUsage - Disk Time: $diskTime"}
+
     # Add up the results
     $total_cpuUsage += [math]::Round($cpuUsage, 2)
     $total_diskTime += [math]::Round($diskTime, 2)
@@ -207,8 +234,10 @@ for ($X = 1; $X -le $RunTimes; $X++) {
 
     # Compare the current minute with the initial minute ($M)
     if ($MM -ne $M) {
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Break Loop: $X"}
         break
     }
+    if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') End Loop: $X"}
 }
 
 # Get Win32_OperatingSystem
@@ -216,6 +245,7 @@ $Win32_OperatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem
 
 # Get the OS name
 $osName = $Win32_OperatingSystem.Caption
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') OS Name: $osName"}
 $osName = Encode-Base64 -InputString $osName
 
 # Get the OS version
@@ -224,14 +254,17 @@ $buildLabEx = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\Curre
 if ($buildLabEx) {
     $osVersion += ",$buildLabEx"
 }
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') OS Version: $osVersion"}
 $osVersion = Encode-Base64 -InputString $osVersion
 
 # Get the hostname
 $hostname = $env:COMPUTERNAME
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Hostname: $hostname"}
 $hostname = Encode-Base64 -InputString $hostname
 
 # Get current time
 $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Time: $time"}
 $time = Encode-Base64 -InputString $time
 
 # Get Reboot Required
@@ -239,54 +272,68 @@ $needsRestart = "0"
 if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
     $needsRestart = "1"
 }
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Reboot Required: $needsRestart"}
 
 # Get the system uptime
 $uptime = $Win32_OperatingSystem.LastBootUpTime
 $uptime = [math]::Round((New-TimeSpan -Start $uptime -End (Get-Date)).TotalSeconds, 0)
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Uptime: $uptime"}
 
 # Get the CPU information
 $sysInfo = Get-CimInstance -ClassName Win32_Processor
 
 # Get the CPU model
 $cpuModel = $sysInfo.Name
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Model: $cpuModel"}
 $cpuModel = Encode-Base64 -InputString $cpuModel
 
 # Get the CPU sockets
 $cpuSockets = ($sysInfo | Measure-Object).Count
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Sockets: $cpuSockets"}
 
 # Get the number of CPU cores
 $cpuCores = $sysInfo.NumberOfCores
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Cores: $cpuCores"}
 
 # Get the number of CPU threads
 $cpuThreads = $sysInfo.NumberOfLogicalProcessors
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Threads: $cpuThreads"}
 
 # Get the CPU Frequency
 $cpuFreq += $sysInfo.CurrentClockSpeed
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Frequency: $cpuFreq"}
 
 # Calculate CPU Usage
 $cpuUsage = [math]::Round($total_cpuUsage / $X, 2)
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Usage: $cpuUsage"}
 
 # Get the disk I/O wait time
 $diskTime = [math]::Round($total_diskTime / $X, 2)
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disk Time: $diskTime"}
 
 # Get the total RAM
 $totalMemory = $Win32_OperatingSystem.TotalVisibleMemorySize * 1024
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Total Memory: $totalMemory"}
 
 # Get the free RAM
 $freeMemory = $Win32_OperatingSystem.FreePhysicalMemory * 1024
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Free Memory: $freeMemory"}
 
 # Calculate used memory
 $usedMemory = $totalMemory - $freeMemory
 $usedMemory = [math]::Round(($usedMemory / $totalMemory) * 100, 2)
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Used Memory: $usedMemory"}
 
 # Get swap (paging file) information
 $swapInfo = Get-CimInstance -ClassName Win32_PageFileUsage
 
 # Get the total swap size
 $totalSwapSize = $swapInfo.AllocatedBaseSize * 1024 * 1024
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Total Swap Size: $totalSwapSize"}
 
 # Get the used swap size
 $usedSwapSize = $swapInfo.CurrentUsage * 1024 * 1024
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Used Swap Size: $usedSwapSize"}
 
 # Calculate swap usage percentage
 if($totalSwapSize -and $usedSwapSize -and ($totalSwapSize -is [int] -or $totalSwapSize -is [double]) -and ($usedSwapSize -is [int] -or $usedSwapSize -is [double])) {
@@ -294,6 +341,7 @@ if($totalSwapSize -and $usedSwapSize -and ($totalSwapSize -is [int] -or $totalSw
 } else {
     $swapUsage = 0
 }
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Swap Usage: $swapUsage"}
 
 # Get disk information and usage details
 $disksInfo = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
@@ -307,13 +355,16 @@ foreach ($disk in $disksInfo) {
         # Format and add the disk data
         $diskData = "$($disk.DeviceID),$($totalSize),$($usedSize),$($disk.FreeSpace)"
         $allDiskData += $diskData
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disk Data: $diskData"}
     } catch {
         # Ignore any errors for unavailable disks
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disk Error: $disk"}
     }
 }
 
 # Join all disk data into a single string
 $disks = ($allDiskData -join ';') + ';'
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disks: $disks"}
 $disks = Encode-Base64 -InputString $disks
 
 # Disk Health
@@ -331,6 +382,7 @@ if ($CheckDriveHealth -eq "1") {
         $temperature = 0
         try {
             $reliabilityData = Get-StorageReliabilityCounter -PhysicalDisk $disk
+            if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disk Health: $($disk.DeviceID) - $($reliabilityData.Wear) - $($reliabilityData.PowerCycleCount) - $($reliabilityData.PowerOnHours) - $($reliabilityData.StartStopCycleCount) - $($reliabilityData.WriteErrorsTotal) - $($reliabilityData.WriteErrorsCorrected) - $($reliabilityData.WriteErrorsUncorrected) - $($reliabilityData.Temperature)"}
             if ($reliabilityData) {
                 $wearLevel = $reliabilityData.Wear
                 $powerCycleCount = $reliabilityData.PowerCycleCount
@@ -343,6 +395,7 @@ if ($CheckDriveHealth -eq "1") {
             }
         } catch {
             # Ignore any errors for unavailable disks
+            if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Disk Health Error: $disk"}
         }
         $DH += "$($disk.DeviceID),$($disk.MediaType),$($disk.FriendlyName),$($disk.SerialNumber),$($disk.OperationalStatus),$($disk.HealthStatus),$wearLevel,$powerCycleCount,$powerOnHours,$unsafeShutdownCount,$writeErrorsTotal,$writeErrorsCorrected,$writeErrorsUncorrected,$temperature;"
     }
@@ -361,6 +414,8 @@ foreach ($NIC in $NetworkInterfacesArray) {
     # Get the latest network stats for the NIC
     try {
         $adapterStats = Get-NetAdapterStatistics | Where-Object { $_.Name -eq $NIC }
+
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Stats: $NIC - RX: $($adapterStats.ReceivedBytes) - TX: $($adapterStats.SentBytes)"}
 
         # Check if the adapter stats were retrieved successfully
         if ($adapterStats) {
@@ -389,9 +444,11 @@ foreach ($NIC in $NetworkInterfacesArray) {
             }
             $IPv4 += "$NIC,$ipv4Addresses;"
             $IPv6 += "$NIC,$ipv6Addresses;"
+            if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Stats: $NIC - RX: $RX - TX: $TX - IPv4: $ipv4Addresses - IPv6: $ipv6Addresses"}
         }
     } catch {
         # Ignore any errors for unavailable NICs
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Network Error: $NIC"}
     }
 }
 $NICS = Encode-Base64 -InputString $NICS
@@ -408,7 +465,6 @@ if (-not [string]::IsNullOrEmpty($CheckServices)) {
         } else {
             $SRVCSR[$serviceName] = $serviceStatus
         }
-
         # Append to the SRVCS string based on the status
         if ($SRVCSR[$serviceName] -eq 0) {
             $SRVCS += "$serviceName,0;"
@@ -417,6 +473,7 @@ if (-not [string]::IsNullOrEmpty($CheckServices)) {
         }
     }
 }
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Services: $SRVCS"}
 $SRVCS = Encode-Base64 -InputString $SRVCS
 
 # Create a custom object with all the data
@@ -450,6 +507,7 @@ $Data = [PSCustomObject]@{
 
 # Convert the custom object to JSON
 $Data = $Data | ConvertTo-Json
+if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Data: $Data"}
 
 # Send the data
 $APIURL = "https://sm.hetrixtools.net/win/"
@@ -462,9 +520,23 @@ $RetryCount = 0
 $Success = $false
 while ($RetryCount -lt $MaxRetries -and -not $Success) {
     try {
+        $startTime = Get-Date
         $Response = Invoke-RestMethod -Uri $APIURL -Method Post -Headers $Headers -Body $Data -TimeoutSec $Timeout
+        $endTime = Get-Date
+        $responseTime = [math]::Round(($endTime - $startTime).TotalMilliseconds, 0)
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Response: $Response | Status: 200 | Time: ${responseTime}ms"}
         $Success = $true
     } catch {
+        $errorMessage = "Exception: $($_.Exception.Message)"
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            $errorMessage += " | Status Code: $statusCode"
+        }
+        if ($_.Exception.InnerException) {
+            $errorMessage += " | Inner Exception: $($_.Exception.InnerException.Message)"
+        }
+        if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Error: $errorMessage | Attempt: $($RetryCount + 1) of $MaxRetries"}
         $RetryCount++
         if ($RetryCount -ne $MaxRetries) {
             Start-Sleep -Seconds 1
