@@ -4,6 +4,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.0.5: 
+
+- Fixed an issue where in some cases agent would not be able to send metrics data
+
 #### Version 2.0.4: 
 
 - Introducing DEBUG Mode, as with our Linux Agent, to help out in debugging potential agent issues
