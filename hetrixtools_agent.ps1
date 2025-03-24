@@ -20,7 +20,7 @@
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Agent Version (do not change)
-$Version = "2.0.4"
+$Version = "2.0.5"
 
 # Load configuration file
 $ConfigFile = "$ScriptPath\hetrixtools.cfg"
@@ -283,7 +283,7 @@ if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-
 $sysInfo = Get-CimInstance -ClassName Win32_Processor
 
 # Get the CPU model
-$cpuModel = $sysInfo.Name
+$cpuModel = $sysInfo[0].Name
 if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Model: $cpuModel"}
 $cpuModel = Encode-Base64 -InputString $cpuModel
 
@@ -300,7 +300,7 @@ $cpuThreads = $sysInfo.NumberOfLogicalProcessors
 if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Threads: $cpuThreads"}
 
 # Get the CPU Frequency
-$cpuFreq += $sysInfo.CurrentClockSpeed
+$cpuFreq = [math]::Round(($sysInfo | Measure-Object -Property CurrentClockSpeed -Average).Average)
 if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') CPU Frequency: $cpuFreq"}
 
 # Calculate CPU Usage
@@ -328,11 +328,11 @@ if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-
 $swapInfo = Get-CimInstance -ClassName Win32_PageFileUsage
 
 # Get the total swap size
-$totalSwapSize = $swapInfo.AllocatedBaseSize * 1024 * 1024
+$totalSwapSize = ($swapInfo | Measure-Object -Property AllocatedBaseSize -Sum).Sum * 1024 * 1024
 if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Total Swap Size: $totalSwapSize"}
 
 # Get the used swap size
-$usedSwapSize = $swapInfo.CurrentUsage * 1024 * 1024
+$usedSwapSize = ($swapInfo | Measure-Object -Property CurrentUsage -Sum).Sum * 1024 * 1024
 if ($DEBUG -eq "1") {Add-Content -Path $debugLog -Value "$ScriptStartTime-$(Get-Date -Format '[yyyy-MM-dd HH:mm:ss]') Used Swap Size: $usedSwapSize"}
 
 # Calculate swap usage percentage
